@@ -1,27 +1,3 @@
-"""
-predict_multi.py
-------------------
-Recognizes MULTIPLE digits in a single image (e.g. a photo of "482"
-written on paper), unlike predict.py which only handles one digit per image.
-
-How it works:
-1. Load the image and threshold it to black/white
-2. Use OpenCV to find each separate digit as its own "contour" (blob)
-3. Sort the contours left-to-right (reading order)
-4. Crop, center, and pad EACH digit individually - same MNIST-style
-   preprocessing used in predict.py - then run it through the trained model
-5. Combine all individual predictions into the final number/sequence
-
-Uses the SAME trained model as predict.py (models/digit_recognizer.keras)
-- no retraining needed, this just adds a segmentation step in front of it.
-
-Run:  python predict_multi.py my_multi_digit_image.png
-"""
-""" this code works for the image with thin strokes """
-
-""" But It does not follow the sorting order means row wise and column wise"""
-
-
 import sys
 import numpy as np
 import cv2
@@ -32,25 +8,14 @@ from tensorflow import keras
 
 MODEL_PATH = "models/digit_recognizer.keras"
 model = keras.models.load_model(MODEL_PATH)
-
-""" Sort the row wise and column wise"""
+ 
 
 
 def sort_reading_order(boxes):
-    """
-    Sorts bounding boxes into natural reading order: top row first
-    (left-to-right), then the next row down (left-to-right), and so on -
-    like reading a page of text, rather than a single left-to-right pass
-    across the whole image (which would incorrectly interleave rows in a
-    multi-row image, e.g. two rows of digits or a multi-line photo).
- 
-    Works by grouping boxes into rows based on vertical (y) closeness,
-    then sorting each row by x.
-    """
+    
     if not boxes:
         return boxes
- 
-    # Group into rows using each box's vertical center, sorted top to bottom
+  
     boxes_by_y = sorted(boxes, key=lambda b: b[1] + b[3] / 2)
     median_height = float(np.median([b[3] for b in boxes]))
     row_gap_threshold = 0.6 * median_height  # how close in y counts as "same row"
@@ -71,8 +36,7 @@ def sort_reading_order(boxes):
             current_row_y_center = y_center
     rows.append(current_row)
  
-    # Within each row, sort left-to-right; rows themselves are already
-    # top-to-bottom since we processed boxes_by_y in that order
+    
     ordered = []
     for row in rows:
         ordered.extend(sorted(row, key=lambda b: b[0]))
@@ -83,22 +47,19 @@ def sort_reading_order(boxes):
 
 
 def segment_digits(image_path, min_area=40):
-    """
-    Finds individual digit regions in an image and returns a list of
-    (x, y, w, h, cropped_digit_array) sorted left-to-right.
-    """
+     
     img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if img is None:
         raise FileNotFoundError(f"Could not read image: {image_path}")
 
-    # Invert if background is light (we want white digits on black, like MNIST)
+    
     if img.mean() > 127:
         img = 255 - img
 
-    # Binarize (removes shadows/noise, gives clean blobs to find contours on)
+ 
     _, thresh = cv2.threshold(img, 50, 255, cv2.THRESH_BINARY)
 
-    # Dilate slightly so broken/thin strokes count as one connected blob
+     
     kernel = np.ones((3, 3), np.uint8)
     thresh = cv2.dilate(thresh, kernel, iterations=1)
 
@@ -117,10 +78,10 @@ def segment_digits(image_path, min_area=40):
             "clearly with a thick, dark pen on a plain background."
         )
 
-    # Sort left-to-right (reading order)
+    
     boxes = sort_reading_order(boxes)
 
-    #boxes.sort(key=lambda b: b[0])
+     
 
     digits = []
     for (x, y, w, h) in boxes:
@@ -135,44 +96,26 @@ def segment_digits(image_path, min_area=40):
 
 
 def preprocess_digit(digit_array):
-    """
-    Prepares a cropped digit for the model, matching MNIST's visual style.
-
-    IMPORTANT: MNIST digits are drawn with thick, bold, filled strokes.
-    Hand-drawn digits (especially thin pen/mouse outlines, like a quick
-    sketch) have much thinner strokes. If you just resize a thin-stroke
-    digit down to 28x28, the stroke can shrink to almost nothing - the
-    model then sees a nearly blank image and often guesses "1" (the
-    simplest shape), regardless of what was actually drawn.
-
-    To fix this, this function:
-      1. Binarizes the crop (removes anti-aliasing/gray fuzz)
-      2. THICKENS the strokes using dilation, scaled to the digit's own
-         size, so thin outlines survive being shrunk down
-      3. Resizes preserving aspect ratio to ~20x20 (MNIST convention)
-      4. Centers the result on a 28x28 black canvas
-    """
+    
     h, w = digit_array.shape
-
-    # Binarize - keep only clearly-dark-enough pixels, drop faint noise
+ 
     _, binary = cv2.threshold(digit_array, 30, 255, cv2.THRESH_BINARY)
 
-    # Thicken strokes: kernel size scales with the digit's own size, so
-    # this works whether the source photo is small or very high-resolution
+     
     kernel_size = max(3, int(min(h, w) * 0.04))
     if kernel_size % 2 == 0:
         kernel_size += 1
     kernel = np.ones((kernel_size, kernel_size), np.uint8)
     thickened = cv2.dilate(binary, kernel, iterations=1)
 
-    # Resize preserving aspect ratio (so digits don't get stretched/squashed)
+     
     if h > w:
         new_h, new_w = 20, max(1, round(20 * w / h))
     else:
         new_w, new_h = 20, max(1, round(20 * h / w))
     resized = cv2.resize(thickened, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
-    # Center on a 28x28 black canvas
+   
     canvas = np.zeros((28, 28), dtype="float32")
     y_off, x_off = (28 - new_h) // 2, (28 - new_w) // 2
     canvas[y_off:y_off + new_h, x_off:x_off + new_w] = resized
@@ -205,8 +148,7 @@ def predict_multi_digit(image_path):
     for i, (d, c) in enumerate(zip(predicted_sequence, confidences)):
         print(f"  Digit {i+1}: {d}  (confidence: {c:.1f}%)")
 
-    # Visualization: original image with bounding boxes + predictions,
-    # plus each individually-cropped digit as the model actually saw it
+   
     img_color = cv2.imread(image_path)
     img_color = cv2.cvtColor(img_color, cv2.COLOR_BGR2RGB)
 
