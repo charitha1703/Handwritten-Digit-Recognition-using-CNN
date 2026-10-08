@@ -1,14 +1,5 @@
-"""
-predict.py
-----------
-Two ways to use the trained digit recognizer:
-
-1. Predict on a few random images from the MNIST test set (no setup needed)
-2. Predict on YOUR OWN image file (e.g. a photo of a handwritten digit
-   you drew and saved as digit.png)
-
-Run: python predict.py
-"""
+ 
+ 
 
 import sys
 import numpy as np
@@ -22,7 +13,7 @@ model = keras.models.load_model(MODEL_PATH)
 
 
 def predict_from_mnist_test_set(n=5):
-    """Predict n random digits from the MNIST test set (quick demo, no file needed)."""
+     
     (_, _), (X_test, y_test) = keras.datasets.mnist.load_data()
     idx = np.random.choice(len(X_test), n, replace=False)
 
@@ -50,31 +41,17 @@ def predict_from_mnist_test_set(n=5):
 
 
 def preprocess_custom_image(image_path):
-    """
-    Converts any hand-drawn digit photo/scan into MNIST-style format:
-    - grayscale, inverted if needed (white digit on black background)
-    - cropped tightly to the digit itself (removes empty margins)
-    - resized so the digit's longest side is ~20px (MNIST digits aren't
-      edge-to-edge, they sit inside a 28x28 canvas with padding)
-    - centered on a 28x28 black canvas using the digit's center of mass
-      (MNIST images are centered this way, not just centered by bounding box)
-    - lines are thickened slightly, since a thin drawn/photographed line
-      often becomes a faint 1-2px line after resizing, which the model
-      can easily confuse for other digits (commonly a "1")
-    This centering/cropping step is the single biggest fix for custom
-    images being misclassified - without it, accuracy on hand-drawn
-    digits is often poor even though test-set accuracy is ~99%.
-    """
+    
     from PIL import Image, ImageFilter
 
     img = Image.open(image_path).convert("L")  # grayscale
     img_array = np.array(img).astype("float32")
 
-    # Ensure white digit on black background (MNIST format)
+     
     if img_array.mean() > 127:
         img_array = 255 - img_array
 
-    # Threshold to find the actual digit strokes vs background noise
+ 
     threshold = 30
     mask = img_array > threshold
 
@@ -84,15 +61,14 @@ def preprocess_custom_image(image_path):
             "Make sure the digit is drawn clearly and the file is correct."
         )
 
-    # Crop tightly to the bounding box of the digit
+    
     rows = np.any(mask, axis=1)
     cols = np.any(mask, axis=0)
     rmin, rmax = np.where(rows)[0][[0, -1]]
     cmin, cmax = np.where(cols)[0][[0, -1]]
     cropped = img_array[rmin:rmax + 1, cmin:cmax + 1]
-
-    # Resize so the longest side becomes 20px, preserving aspect ratio
-    # (MNIST digits occupy roughly the center 20x20 area of the 28x28 image)
+ 
+   
     h, w = cropped.shape
     if h > w:
         new_h, new_w = 20, max(1, round(20 * w / h))
@@ -102,11 +78,11 @@ def preprocess_custom_image(image_path):
     cropped_img = Image.fromarray(cropped.astype("uint8")).resize(
         (new_w, new_h), Image.LANCZOS
     )
-    # Thicken the strokes slightly so thin lines survive downscaling
+   
     cropped_img = cropped_img.filter(ImageFilter.MaxFilter(3))
     resized = np.array(cropped_img).astype("float32")
 
-    # Paste onto a 28x28 black canvas, centered by center of mass
+     
     canvas = np.zeros((28, 28), dtype="float32")
     y_offset = (28 - new_h) // 2
     x_offset = (28 - new_w) // 2
@@ -118,14 +94,7 @@ def preprocess_custom_image(image_path):
 
 
 def predict_from_image_file(image_path):
-    """
-    Predict the digit in a custom image file.
-    The image should be a single handwritten digit, ideally:
-    - dark digit on light background OR light digit on dark background
-      (auto-detected and inverted if needed)
-    - reasonably clear, thick strokes (thin pencil lines may not survive
-      the resize to 28x28)
-    """
+    
     img_array = preprocess_custom_image(image_path)
 
     pred = model.predict(img_array, verbose=0)[0]
